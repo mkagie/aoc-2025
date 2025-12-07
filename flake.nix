@@ -51,6 +51,8 @@
             name = "rust shell";
             packages = with pkgs; [
               toolchainDev
+              gdb
+              # cargo-generate
             ];
           };
         };

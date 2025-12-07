@@ -1,0 +1,11 @@
+[workspace]
+members = [
+  "day-one"
+]
+
+[workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+rayon = { version = "1.11" }
+
+[workspace.package]
+version = "0.1.0"
