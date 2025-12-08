@@ -59,9 +59,10 @@ where
 // TODO -- Update this with the return type
 type ReturnType = usize;
 type VectorType = Rotation;
-type VectorType2 = u32;
+type VectorType2 = VectorType;
 
 /// Rotation
+#[derive(Debug)]
 pub enum Rotation {
     Left(u16),
     Right(u16),
@@ -81,25 +82,54 @@ impl Rotation {
 /// Counter
 #[derive(Debug)]
 pub struct Counter {
-    val: u16,
+    val: u8,
     counter_pt_1: usize,
+    counter_pt_2: usize,
 }
 impl Default for Counter {
     fn default() -> Self {
         Self {
             val: 50,
             counter_pt_1: 0,
+            counter_pt_2: 0,
         }
     }
 }
 impl Counter {
     pub fn rotate(&mut self, rot: &Rotation) {
         match rot {
-            Rotation::Left(val) => {
-                self.val = ((self.val as i16 + *val as i16) % 100_i16) as u16;
-            }
             Rotation::Right(val) => {
-                self.val = ((self.val as i16 - *val as i16) % 100_i16) as u16;
+                let int_val = self.val as u16 + *val;
+                // We know int_val > 0, so just take modulus
+                self.val = (int_val % 100_u16) as u8;
+                // Since this is addition, we can determine how many times we passed zero by just
+                // taking the floor of the division
+                self.counter_pt_2 += (int_val / 100_u16) as usize;
+            }
+            Rotation::Left(val) => {
+                let prev_val = self.val;
+                let int_val = self.val as i16 - *val as i16;
+                let modulo_val = int_val % 100_i16;
+                // Modulo_val could be negative, need to correctly deal with this
+                if modulo_val.is_negative() {
+                    self.val = (modulo_val + 100) as u8;
+
+                    // If it is negative, then we definitely crossed zero. Now we need to determine
+                    // how many times we crossed zero
+                    self.counter_pt_2 += (int_val as f32 / 100_f32).abs().ceil() as usize;
+                } else {
+                    // Number is zero or positive
+                    // If modulo_val is not negative, then we could not have crossed zero
+                    self.val = modulo_val as u8;
+
+                    if modulo_val == 0 {
+                        self.counter_pt_2 += 1;
+                    }
+                }
+                // We did not cross zero if we started at zero
+                if prev_val == 0 {
+                    self.counter_pt_2 -= 1;
+                }
             }
         }
         if self.val == 0 {
@@ -110,6 +140,10 @@ impl Counter {
     pub fn get_counter_pt_1(&self) -> usize {
         self.counter_pt_1
     }
+
+    pub fn get_counter_pt_2(&self) -> usize {
+        self.counter_pt_2
+    }
 }
 
 /// Map a line to a VectorType
@@ -119,7 +153,7 @@ fn map_one(input: &str) -> VectorType {
 
 /// Map a line to a VectorType
 fn map_two(input: &str) -> VectorType2 {
-    todo!()
+    map_one(input)
 }
 
 /// Internal logic for part_one
@@ -133,7 +167,11 @@ fn part_one_internal(input: Vec<VectorType>) -> ReturnType {
 
 /// Internal logic for part two
 fn part_two_internal(input: Vec<VectorType2>) -> ReturnType {
-    todo!()
+    let mut counter = Counter::default();
+    for rot in input {
+        counter.rotate(&rot);
+    }
+    counter.get_counter_pt_2()
 }
 
 #[cfg(test)]
@@ -177,6 +215,6 @@ L82"
         let output = part_two_internal(input);
 
         // TODO fill this out
-        assert_eq!(output, 0);
+        assert_eq!(output, 6);
     }
 }
