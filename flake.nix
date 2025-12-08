@@ -52,7 +52,7 @@
             packages = with pkgs; [
               toolchainDev
               gdb
-              # cargo-generate
+              cargo-generate
             ];
           };
         };

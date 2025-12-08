@@ -11,9 +11,4 @@ flakeInputs: final: prev: rec {
     "rust-src"
     "rust-std"
   ];
-
-  rustPlatform = prev.makeRustPlatform {
-    cargo = toolchain;
-    rustc = toolchain;
-  };
 }
