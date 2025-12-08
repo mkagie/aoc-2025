@@ -106,7 +106,7 @@ impl RangeEntry {
     fn check_for_repeats_part2(val: usize) -> bool {
         let s = val.to_string();
         // The possible max length of a pattern is the floor of the length of the string
-        let max_length = (s.len() as f32 / 2.0).ceil() as usize;
+        let max_length = (s.len() as f32 / 2.0).floor() as usize;
         // Look at chunk sizes from 1 to the max_length
         for l in 1..=max_length {
             // We can only use this chunk length if we can evenly divide the number of chunks
@@ -125,19 +125,6 @@ impl RangeEntry {
                 chunks_are_all_the_same = chunks_are_all_the_same && first_chunk == second_chunk;
             }
             if chunks_are_all_the_same {
-                println!(
-                    "Val: {s}\tChunk size: {l}\tFirst: {first_chunk:?}\tLast: {:?}\tEqual: {:?}",
-                    base_iter
-                        .clone()
-                        .skip(l * (n_chunks - 1))
-                        .take(l)
-                        .collect::<String>(),
-                    first_chunk
-                        == base_iter
-                            .skip(l * (n_chunks - 1))
-                            .take(l)
-                            .collect::<String>()
-                );
                 return true;
             }
         }

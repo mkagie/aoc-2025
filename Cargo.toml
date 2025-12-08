@@ -3,6 +3,8 @@ members = [
   "day-one"
 , "day-two"]
 
+resolver = "3"
+
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
 

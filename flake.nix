@@ -2,7 +2,7 @@
   description = "Advent of Code -- 2025";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-25.11";
 
     flake-utils.url = "github:numtide/flake-utils";
 
