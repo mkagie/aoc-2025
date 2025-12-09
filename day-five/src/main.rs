@@ -91,8 +91,8 @@ impl IngredientsList {
 /// Try without memoization
 #[derive(Debug, Clone)]
 pub struct Range {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 impl Range {
     pub fn new(input: &str) -> Self {
@@ -106,6 +106,17 @@ impl Range {
     pub fn contains(&self, value: usize) -> bool {
         value >= self.start && value <= self.end
     }
+
+    pub fn contains_range(&self, other: &Range) -> bool {
+        // A range is not contained only if both start and end are either below my own start or
+        // above my own end
+        !((other.start < self.start && other.end < self.start)
+            || (other.start > self.end && other.end > self.end))
+    }
+
+    pub fn get_n(&self) -> usize {
+        self.end - self.start + 1
+    }
 }
 
 /// Ranges
@@ -113,7 +124,14 @@ impl Range {
 pub struct Ranges(Vec<Range>);
 impl Ranges {
     pub fn add_range(&mut self, input: &str) {
-        self.0.push(Range::new(input))
+        let r = Range::new(input);
+        if let Some(initial_range) = self.get_contains_range_mut(&r) {
+            // We need to combine the Ranges
+            initial_range.start = initial_range.start.min(r.start);
+            initial_range.end = initial_range.end.max(r.end);
+        } else {
+            self.0.push(Range::new(input))
+        }
     }
 
     pub fn contains(&self, value: usize) -> bool {
@@ -123,6 +141,14 @@ impl Ranges {
             }
         }
         false
+    }
+
+    fn get_contains_range_mut(&mut self, other: &Range) -> Option<&mut Range> {
+        self.0.iter_mut().find(|range| range.contains_range(other))
+    }
+
+    pub fn get_n(&self) -> usize {
+        self.0.iter().fold(0, |acc, range| acc + range.get_n())
     }
 }
 
@@ -140,7 +166,9 @@ fn part_one_internal(input: InputType) -> ReturnType {
 
 /// Internal logic for part two
 fn part_two_internal(input: InputType) -> ReturnType {
-    todo!()
+    let (fresh_ingredients, _) = input;
+    println!("Fresh Ingredients: {fresh_ingredients:?}");
+    fresh_ingredients.get_n()
 }
 
 #[cfg(test)]
@@ -197,6 +225,6 @@ mod tests {
         let output = part_two_internal(input);
 
         // TODO fill this out
-        assert_eq!(output, 0);
+        assert_eq!(output, 14);
     }
 }
