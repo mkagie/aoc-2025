@@ -1,6 +1,6 @@
 //! Command line executable for running part one and part two
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fs::File,
     io::{BufRead, BufReader},
     time::Instant,
@@ -59,11 +59,10 @@ fn parse_input(file: BufReader<File>) -> InputType {
         let line = line.unwrap();
         if line.is_empty() {
             has_found_blank_line = true;
-            println!("Filled the fresh list");
             continue;
         }
         if !has_found_blank_line {
-            fresh_ingredients.add_range(&line);
+            fresh_ingredients.add_line(&line);
         } else {
             ingredients.add_ingredient(line.trim().parse().unwrap());
         }
@@ -75,16 +74,12 @@ fn parse_input(file: BufReader<File>) -> InputType {
 type ReturnType = usize;
 type InputType = (Ranges, IngredientsList);
 
-/// Ingredients List -- a HashMap with a number of times it is called
+/// Ingredients List -- a HashSet with a number of times it is called
 #[derive(Debug, Clone, Default)]
-pub struct IngredientsList(HashMap<usize, usize>);
+pub struct IngredientsList(HashSet<usize>);
 impl IngredientsList {
     pub fn add_ingredient(&mut self, ingredient: usize) {
-        if let Some(val) = self.0.get_mut(&ingredient) {
-            *val += 1;
-        } else {
-            self.0.insert(ingredient, 1);
-        }
+        self.0.insert(ingredient);
     }
 }
 
@@ -123,14 +118,22 @@ impl Range {
 #[derive(Debug, Clone, Default)]
 pub struct Ranges(Vec<Range>);
 impl Ranges {
-    pub fn add_range(&mut self, input: &str) {
+    pub fn add_line(&mut self, input: &str) {
         let r = Range::new(input);
-        if let Some(initial_range) = self.get_contains_range_mut(&r) {
-            // We need to combine the Ranges
+        self.add_range(r);
+    }
+
+    fn add_range(&mut self, r: Range) {
+        if let Some(idx) = self.get_contains_range_idx(&r) {
+            // Pop that range
+            let mut initial_range = self.0.swap_remove(idx);
+            // Modify the range
             initial_range.start = initial_range.start.min(r.start);
             initial_range.end = initial_range.end.max(r.end);
+            // Reinsert
+            self.add_range(initial_range);
         } else {
-            self.0.push(Range::new(input))
+            self.0.push(r)
         }
     }
 
@@ -143,8 +146,17 @@ impl Ranges {
         false
     }
 
-    fn get_contains_range_mut(&mut self, other: &Range) -> Option<&mut Range> {
-        self.0.iter_mut().find(|range| range.contains_range(other))
+    fn get_contains_range_idx(&self, other: &Range) -> Option<usize> {
+        if let Some((idx, _)) = self
+            .0
+            .iter()
+            .enumerate()
+            .find(|(_, range)| range.contains_range(other))
+        {
+            Some(idx)
+        } else {
+            None
+        }
     }
 
     pub fn get_n(&self) -> usize {
@@ -155,19 +167,21 @@ impl Ranges {
 /// Internal logic for part_one
 fn part_one_internal(input: InputType) -> ReturnType {
     let (fresh_ingredients, ingredients_to_check) = input;
-    ingredients_to_check.0.keys().fold(0, |acc, ingredient| {
-        acc + if fresh_ingredients.contains(*ingredient) {
-            1
-        } else {
-            0
-        }
-    })
+    ingredients_to_check
+        .0
+        .into_iter()
+        .fold(0, |acc, ingredient| {
+            acc + if fresh_ingredients.contains(ingredient) {
+                1
+            } else {
+                0
+            }
+        })
 }
 
 /// Internal logic for part two
 fn part_two_internal(input: InputType) -> ReturnType {
     let (fresh_ingredients, _) = input;
-    println!("Fresh Ingredients: {fresh_ingredients:?}");
     fresh_ingredients.get_n()
 }
 
@@ -202,7 +216,7 @@ mod tests {
                 continue;
             }
             if !has_found_blank_line {
-                fresh_ingredients.add_range(line);
+                fresh_ingredients.add_line(line);
             } else {
                 ingredients.add_ingredient(line.trim().parse().unwrap());
             }
