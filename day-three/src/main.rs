@@ -60,23 +60,7 @@ where
 #[derive(Debug, Clone)]
 pub struct BatteryBank(String);
 impl BatteryBank {
-    /// Find the largest possible joltage
-    ///
-    /// We are going to start by brute forcing it and seeing what would happen
-    pub fn find_largest(&self) -> u16 {
-        let mut largest = 0;
-        let chars: Vec<_> = self.0.chars().collect();
-        for idx0 in 0..chars.len() - 1 {
-            let digit0: u16 = chars[idx0].to_digit(10).unwrap() as u16 * 10;
-            for c in chars.iter().skip(idx0 + 1) {
-                let digit1: u16 = c.to_digit(10).unwrap() as u16;
-                let sum = digit0 + digit1;
-                largest = largest.max(sum);
-            }
-        }
-        largest
-    }
-
+    /// Find the largest digit you can get, made out of k options
     pub fn find_largest_k(&self, k: usize) -> usize {
         let digits: Vec<usize> = self
             .0
@@ -131,7 +115,7 @@ fn map_two(input: &str) -> VectorType2 {
 fn part_one_internal(input: Vec<VectorType>) -> ReturnType {
     input
         .into_iter()
-        .fold(0_usize, |acc, bat| acc + bat.find_largest() as usize)
+        .fold(0_usize, |acc, bat| acc + bat.find_largest_k(2))
 }
 
 /// Internal logic for part two
@@ -158,7 +142,7 @@ mod tests {
     where
         F: Fn(&str) -> T,
     {
-        input.lines().map(|x| f(x)).collect()
+        input.lines().map(f).collect()
     }
 
     #[test]
