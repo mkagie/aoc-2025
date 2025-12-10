@@ -96,7 +96,7 @@ mod tests {
     where
         F: Fn(&str) -> T,
     {
-        input.lines().map(|x| f(x)).collect()
+        input.lines().map(f).collect()
     }
 
     #[test]

@@ -197,7 +197,7 @@ L82"
     where
         F: Fn(&str) -> T,
     {
-        input.lines().map(|x| f(x)).collect()
+        input.lines().map(f).collect()
     }
 
     #[test]
