@@ -1,9 +1,5 @@
 //! Command line executable for running part one and part two
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    time::Instant,
-};
+use std::time::Instant;
 
 use clap::Parser;
 
