@@ -27,57 +27,24 @@ enum Part {
 fn main() {
     let args = Args::parse();
 
-    let file = BufReader::new(File::open(args.input_file).expect("Cannot find file"));
+    // Read to a string
+    let s = std::fs::read_to_string(args.input_file).expect("Failed to read file");
 
     let start = Instant::now();
     let answer = match args.part {
-        Part::Part1 => part_one(file),
-        Part::Part2 => part_two(file),
+        Part::Part1 => part_one(&s),
+        Part::Part2 => part_two(&s),
     };
 
     println!("{:?}", answer);
     println!("Completed in {:?}", start.elapsed());
 }
 
-fn part_one(file: BufReader<File>) -> ReturnType {
-    let input = parse_input(file, map_one);
-    part_one_internal(input)
-}
-
-fn part_two(file: BufReader<File>) -> ReturnType {
-    let input = parse_input(file, map_two);
-    part_two_internal(input)
-}
-
-fn parse_input<F, T>(file: BufReader<File>, f: F) -> Vec<T>
-where
-    F: Fn(&str) -> T,
-{
-    file.lines().map(|x| f(x.unwrap().as_str())).collect()
-}
-
-// TODO -- Update this with the return type
-type ReturnType = u64;
-type VectorType = u32;
-type VectorType2 = u32;
-
-/// Map a line to a VectorType
-fn map_one(input: &str) -> VectorType {
+fn part_one(s: &str) -> usize {
     todo!()
 }
 
-/// Map a line to a VectorType
-fn map_two(input: &str) -> VectorType2 {
-    todo!()
-}
-
-/// Internal logic for part_one
-fn part_one_internal(input: Vec<VectorType>) -> ReturnType {
-    todo!()
-}
-
-/// Internal logic for part two
-fn part_two_internal(input: Vec<VectorType2>) -> ReturnType {
+fn part_two(s: &str) -> usize {
     todo!()
 }
 
@@ -91,18 +58,9 @@ mod tests {
         todo!();
     }
 
-    /// Function to split above into different inputs
-    fn parse_input_test<F, T>(input: &str, f: F) -> Vec<T>
-    where
-        F: Fn(&str) -> T,
-    {
-        input.lines().map(f).collect()
-    }
-
     #[test]
     fn test_one() {
-        let input = parse_input_test(input_one(), map_one);
-        let output = part_one_internal(input);
+        let output = part_one(input_one());
 
         // TODO fill this out
         assert_eq!(output, 0);
@@ -110,8 +68,7 @@ mod tests {
 
     #[test]
     fn test_two() {
-        let input = parse_input_test(input_one(), map_two);
-        let output = part_two_internal(input);
+        let output = part_two(input_one());
 
         // TODO fill this out
         assert_eq!(output, 0);
