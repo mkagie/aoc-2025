@@ -1,6 +1,6 @@
 //! Command line executable for running part one and part two
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::File,
     io::{BufReader, Read},
     time::Instant,
@@ -227,34 +227,36 @@ impl Manager {
     }
 
     pub fn run_p2(self) -> usize {
-        let mut active_timelines = HashSet::new();
-        let mut deactive_timeline_ctr = 0;
-        // Create the first timeline, which starts at the start
         let (pos_r, pos_c) = self.manifold.get_start();
-        active_timelines.insert(Timeline(vec![TachyonBeam { pos_r, pos_c }]));
+        let current_timeline = Timeline(vec![TachyonBeam { pos_r, pos_c }]);
+        let mut prev_seen = HashMap::new();
+        Self::pt2_recursive_count(&self.manifold, &mut prev_seen, current_timeline)
+    }
 
-        while !active_timelines.is_empty() {
-            let mut new_active_timelines = HashSet::new();
-            for timeline in active_timelines {
-                let v = timeline.0;
-                let beam = v.last().unwrap().clone();
-                let evolved_beams = beam.evolve(&self.manifold);
-                if evolved_beams.is_empty() {
-                    // We have found the bottom, this is now a deactive timeline and we should
-                    // remove it
-                    deactive_timeline_ctr += 1;
-                    continue;
-                }
-                for beam in evolved_beams {
-                    // For each possible new beam, create a new active timeline and add it
-                    let mut new_v = v.clone();
-                    new_v.push(beam);
-                    new_active_timelines.insert(Timeline(new_v));
-                }
-            }
-            active_timelines = new_active_timelines;
+    pub fn pt2_recursive_count(
+        manifold: &TachyonManifold,
+        prev_seen: &mut HashMap<TachyonBeam, usize>,
+        current_timeline: Timeline,
+    ) -> usize {
+        let v = &current_timeline.0;
+        let beam = v.last().unwrap().clone();
+        // Check if we have seen this before
+        if let Some(i) = prev_seen.get(&beam) {
+            return *i;
         }
-        deactive_timeline_ctr
+        let evolved_beams = beam.clone().evolve(manifold);
+        if evolved_beams.is_empty() {
+            return 1;
+        }
+        let mut count = 0;
+        for beam in evolved_beams {
+            let mut new_v = v.clone();
+            new_v.push(beam);
+            count += Self::pt2_recursive_count(manifold, prev_seen, Timeline(new_v));
+        }
+        // Store in previously seen for future
+        prev_seen.insert(beam, count);
+        count
     }
 }
 
