@@ -47,13 +47,17 @@
         };
 
         devShells = {
-          default = pkgs.mkShell {
+          default = pkgs.mkShell rec {
             name = "rust shell";
             packages = with pkgs; [
               toolchainDev
               gdb
               cargo-generate
             ];
+            buildInputs = [
+              pkgs.cbc
+            ];
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           };
         };
 

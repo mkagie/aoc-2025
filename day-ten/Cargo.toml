@@ -7,4 +7,5 @@ edition = "2024"
 
 [dependencies]
 clap = { workspace = true }
+good_lp = "1.14.2"
 
