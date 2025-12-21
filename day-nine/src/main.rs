@@ -256,11 +256,12 @@ impl Driver {
         // Now, we need to sort the areas and then iterate until we find one that is valid
         areas.sort_by_key(|val| val.area);
         areas.reverse();
+        let mut previously_invalidated_locations = Vec::new();
         for area in areas {
-            if area.validate(&board) {
+            if area.validate(&board, &previously_invalidated_locations) {
                 return area.area;
             } else {
-                println!("Invalidated");
+                previously_invalidated_locations.push(area);
             }
         }
         0
@@ -275,7 +276,19 @@ struct AreaResults {
     tile1: Location,
 }
 impl AreaResults {
-    pub fn validate(&self, board: &DMatrix<u8>) -> bool {
+    pub fn validate(
+        &self,
+        board: &DMatrix<u8>,
+        previously_invalidated_locations: &[AreaResults],
+    ) -> bool {
+        // Check to see if it has already been Invalidated
+        for prev_loc in previously_invalidated_locations {
+            if self.consumes(prev_loc) {
+                println!("Invalidated because we have seen before");
+                // We already proved this one doesn't work, stop looking
+                return false;
+            }
+        }
         for y in self.tile0.y.min(self.tile1.y)..=self.tile0.y.max(self.tile1.y) {
             for x in self.tile0.x.min(self.tile1.x)..=self.tile0.x.max(self.tile1.x) {
                 if board[(y, x)] == 0 {
@@ -293,8 +306,13 @@ impl AreaResults {
     /// and our top right is greater than their top right
     pub fn consumes(&self, other: &AreaResults) -> bool {
         let (bottom_left, top_right) = self.tile0.get_corners(&self.tile1);
-        let (other_bottom_left, other_bottom_right) = other.tile0.get_corners(&other.tile1);
-        bottom_left < other_bottom_left && top_right > other_bottom_right
+        let (other_bottom_left, other_top_right) = other.tile0.get_corners(&other.tile1);
+        println!(
+            "Bottom lefts: {bottom_left:?} -- {other_bottom_left:?} -- {:?}\tTop rights: {top_right:?} -- {other_top_right:?} -- {:?}",
+            bottom_left < other_bottom_left,
+            top_right > other_top_right
+        );
+        bottom_left < other_bottom_left && top_right > other_top_right
     }
 }
 
