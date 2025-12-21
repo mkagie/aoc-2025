@@ -2,7 +2,6 @@
 use std::time::Instant;
 
 use clap::Parser;
-use nalgebra::DMatrix;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -73,32 +72,118 @@ impl Machine {
         }
     }
 
-    fn buttons_to_matrix(&self) -> DMatrix<usize> {
-        let n_lights = self.light_diagram.inner.len();
-        let n_buttons = self.buttons.len();
-        println!("Array should be {n_lights}x{n_buttons}");
-        let rows: Vec<_> = self
-            .buttons
+    fn build_equations(&self) -> Vec<Equation> {
+        self.light_diagram
+            .inner
             .iter()
-            .map(|button| button.to_column_vector(n_buttons))
-            .collect();
-        println!("rows: {rows:?}");
-        DMatrix::from_fn(n_lights, n_buttons, |row, col| {
-            println!("Row: {row}\tCol: {col}");
+            .enumerate()
+            .map(|(light_idx, status)| {
+                let mut row = 0u64;
 
-            rows[row][(0, col)]
-        })
+                for (btn_idx, btn) in self.buttons.iter().enumerate() {
+                    if btn.lights_affected.contains(&light_idx) {
+                        row |= 1 << btn_idx;
+                    }
+                }
+                let rhs = matches!(status, LightStatus::On);
+                Equation { row, rhs }
+            })
+            .collect()
+    }
+
+    fn gaussian_elim_gf2(mut eqs: Vec<Equation>, n_buttons: usize) -> Option<(u64, Vec<u64>)> {
+        // Bookkeeping
+        let mut pivot_col = vec![None; n_buttons]; // which row is the pivot of
+        // column col
+        let mut row = 0; // Current pivot row during elimination
+
+        for col in 0..n_buttons {
+            // Look for a row >= row where variable col appears with coefficient 1
+            let pivot = (row..eqs.len()).find(|&r| (eqs[r].row >> col) & 1 == 1);
+            if pivot.is_none() {
+                // If non exist, this variable is free, because this button does not affect any of
+                // the outcomes -- skip this column
+                continue;
+            }
+            let pivot = pivot.unwrap();
+
+            // Standard Gaussian elimination -- swap pivot row upward, record where the pivot lives
+            eqs.swap(row, pivot);
+            pivot_col[col] = Some(row);
+
+            // Eliminate this button from all other rows
+            for r in 0..eqs.len() {
+                // if row r has a 1 in this pivot column, then subtract pivot row from it -- this
+                // zeros out column col in row r and preserves the equation's validity
+                if r != row && ((eqs[r].row >> col) & 1) == 1 {
+                    eqs[r].row ^= eqs[row].row;
+                    eqs[r].rhs ^= eqs[row].rhs;
+                }
+            }
+            row += 1;
+        }
+
+        // Consistency check -- detects 0 == 1 mod 2
+        for eq in &eqs {
+            if eq.row == 0 && eq.rhs {
+                return None; // No solution
+            }
+        }
+        // Particular solution (set free vars = 0)
+        // Build one concrete solution x
+        let mut particular = 0u64;
+        for (col, item) in pivot_col.iter().enumerate().take(n_buttons) {
+            if let Some(r) = item
+                && eqs[*r].rhs
+            {
+                particular |= 1 << col;
+            }
+        }
+
+        // Nullspace basis
+        let mut nullspace = Vec::new();
+        for free_col in 0..n_buttons {
+            if pivot_col[free_col].is_none() {
+                // Start with free variable == 1, all others == 0
+                let mut vec = 1u64 << free_col;
+                // Enforces A vec = 0 -- turning on this free variable forces some pivot variables
+                // to flip, so overall effect is no lights change
+                for (col, item) in pivot_col.iter().enumerate().take(n_buttons) {
+                    if let Some(r) = item
+                        && ((eqs[*r].row >> free_col) & 1) == 1
+                    {
+                        vec |= 1 << col;
+                    }
+                }
+                nullspace.push(vec);
+            }
+        }
+
+        Some((particular, nullspace))
     }
 
     pub fn find_min_button_presses(&self) -> usize {
-        let A = self.buttons_to_matrix();
-        println!("A: {A}");
-        let x = DMatrix::from_element(self.buttons.len(), 1, 1);
-        let b = A * x;
-        println!("b: {b}");
-        let is_valid = self.indicator_lights.validate(&b);
-        println!("Valid?: {is_valid}");
-        0
+        let equations = self.build_equations();
+        let n_buttons = self.buttons.len();
+
+        let (particular, nullspace) =
+            Self::gaussian_elim_gf2(equations, n_buttons).expect("Machine has no solution");
+
+        let mut best = particular.count_ones() as usize;
+        let k = nullspace.len();
+
+        // Brute force nullspace (usually small)
+        for mask in 0..(1u64 << k) {
+            let mut x = particular;
+            for i in 0..k {
+                if (mask >> i) & 1 == 1 {
+                    x ^= nullspace[i];
+                }
+            }
+            best = best.min(x.count_ones() as usize);
+        }
+
+        best
     }
 }
 
@@ -122,25 +207,6 @@ impl IndicatorLights {
     pub fn initialize_new(&self) -> Self {
         let inner = self.inner.iter().map(|_| LightStatus::Off).collect();
         Self { inner }
-    }
-
-    pub fn validate(&self, b: &DMatrix<usize>) -> bool {
-        for idx in 0..self.inner.len() {
-            let output = b[idx];
-            match self.inner[idx] {
-                LightStatus::On => {
-                    if output.is_multiple_of(2) {
-                        return false;
-                    }
-                }
-                LightStatus::Off => {
-                    if !output.is_multiple_of(2) {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
     }
 }
 
@@ -182,14 +248,13 @@ impl Button {
         let lights_affected = s.split(",").map(|c| c.parse().unwrap()).collect();
         Self { lights_affected }
     }
+}
 
-    pub fn to_column_vector(&self, n_lights: usize) -> DMatrix<usize> {
-        let mut mat = DMatrix::zeros(1, n_lights);
-        for idx in &self.lights_affected {
-            mat[*idx] = 1;
-        }
-        mat
-    }
+/// One equtions: (row * x) = rhs (mod 2)
+#[derive(Debug, Clone)]
+struct Equation {
+    row: u64, // assuming <=64 buttons, bitset
+    rhs: bool,
 }
 
 fn part_one(s: &str) -> usize {
