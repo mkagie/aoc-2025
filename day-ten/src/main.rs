@@ -41,15 +41,14 @@ fn main() {
 struct Machine {
     /// Light diagram
     light_diagram: IndicatorLights,
-    /// Internal indicator lights
-    indicator_lights: IndicatorLights,
     /// Button wiring schematics
     buttons: Vec<Button>,
     /// Joltage requirements
-    joltage_requirements: String, // This will change
+    joltage_requirements: Vec<u32>, // This will change
 }
 impl Machine {
     pub fn from_line(line: &str) -> Machine {
+        let line = line.trim();
         // Parse indicator lights
         let idx_start = line.find("[").unwrap();
         let idx_stop = line.find("]").unwrap();
@@ -62,10 +61,13 @@ impl Machine {
             .map(Button::from_str)
             .collect();
 
-        let idx_start = idx_stop + 2;
-        let joltage_requirements = line[idx_start..].to_string();
+        let idx_start = idx_stop + 3;
+        let idx_end = line.len() - 1;
+        let joltage_requirements = line[idx_start..idx_end]
+            .split(",")
+            .map(|v| v.parse().unwrap())
+            .collect();
         Self {
-            indicator_lights: light_diagram.initialize_new(),
             light_diagram,
             buttons,
             joltage_requirements,
@@ -91,13 +93,33 @@ impl Machine {
             .collect()
     }
 
-    fn gaussian_elim_gf2(mut eqs: Vec<Equation>, n_buttons: usize) -> Option<(u64, Vec<u64>)> {
-        // Bookkeeping
-        let mut pivot_col = vec![None; n_buttons]; // which row is the pivot of
-        // column col
-        let mut row = 0; // Current pivot row during elimination
+    fn build_joltage_equations(&self) -> Vec<(u64, u32)> {
+        self.joltage_requirements
+            .iter()
+            .enumerate()
+            .map(|(idx, target)| {
+                let mut row = 0u64;
+                for (j, button) in self.buttons.iter().enumerate() {
+                    if button.lights_affected.contains(&idx) {
+                        row |= 1 << j;
+                    }
+                }
+                (row, *target)
+            })
+            .collect()
+    }
 
-        for col in 0..n_buttons {
+    /// Use Gaussian elimination to simplify the equations
+    ///
+    /// Trying to solve Ax = b (mod 2)
+    fn gaussian_elim_gf2(mut eqs: Vec<Equation>, n_buttons: usize) -> Option<(u64, Vec<u64>)> {
+        // Bookkeeping -- which row is the pivot off the column `col`
+        let mut pivot_col = vec![None; n_buttons];
+        // Current pivot row during elimination
+        let mut row = 0;
+
+        // Iterate through the various columns trying to remove redundent scenarios
+        for (col, item) in pivot_col.iter_mut().enumerate() {
             // Look for a row >= row where variable col appears with coefficient 1
             let pivot = (row..eqs.len()).find(|&r| (eqs[r].row >> col) & 1 == 1);
             if pivot.is_none() {
@@ -109,7 +131,7 @@ impl Machine {
 
             // Standard Gaussian elimination -- swap pivot row upward, record where the pivot lives
             eqs.swap(row, pivot);
-            pivot_col[col] = Some(row);
+            *item = Some(row);
 
             // Eliminate this button from all other rows
             for r in 0..eqs.len() {
@@ -132,7 +154,7 @@ impl Machine {
         // Particular solution (set free vars = 0)
         // Build one concrete solution x
         let mut particular = 0u64;
-        for (col, item) in pivot_col.iter().enumerate().take(n_buttons) {
+        for (col, item) in pivot_col.iter().enumerate() {
             if let Some(r) = item
                 && eqs[*r].rhs
             {
@@ -148,7 +170,7 @@ impl Machine {
                 let mut vec = 1u64 << free_col;
                 // Enforces A vec = 0 -- turning on this free variable forces some pivot variables
                 // to flip, so overall effect is no lights change
-                for (col, item) in pivot_col.iter().enumerate().take(n_buttons) {
+                for (col, item) in pivot_col.iter().enumerate() {
                     if let Some(r) = item
                         && ((eqs[*r].row >> free_col) & 1) == 1
                     {
@@ -175,15 +197,55 @@ impl Machine {
         // Brute force nullspace (usually small)
         for mask in 0..(1u64 << k) {
             let mut x = particular;
-            for i in 0..k {
+            for (i, nspace) in nullspace.iter().enumerate() {
                 if (mask >> i) & 1 == 1 {
-                    x ^= nullspace[i];
+                    x ^= nspace;
                 }
             }
             best = best.min(x.count_ones() as usize);
         }
 
         best
+    }
+
+    fn dfs(eqs: &[(u64, u32)], idx: usize, x: &mut Vec<u32>, best: &mut u32) {
+        if idx == x.len() {
+            if eqs.iter().all(|(row, rhs)| {
+                let sum: u32 = x
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| (row >> j) & 1 == 1)
+                    .map(|(_, v)| *v)
+                    .sum();
+                sum == *rhs
+            }) {
+                *best = (*best).min(x.iter().sum());
+            }
+            return;
+        }
+
+        for v in 0..=*best {
+            x[idx] = v;
+            if x.iter().take(idx + 1).sum::<u32>() >= *best {
+                break;
+            }
+            Self::dfs(eqs, idx + 1, x, best);
+        }
+    }
+
+    pub fn find_min_button_presses_pt_2(&self) -> usize {
+        let eqs = self.build_joltage_equations();
+
+        let n_buttons = self.buttons.len();
+
+        let mut x = vec![0u32; n_buttons];
+
+        let rhs_max = eqs.iter().map(|(_, rhs)| *rhs).max().unwrap_or(0);
+        let mut best = rhs_max * n_buttons as u32;
+
+        Self::dfs(&eqs, 0, &mut x, &mut best);
+
+        best as usize
     }
 }
 
@@ -195,17 +257,6 @@ struct IndicatorLights {
 impl IndicatorLights {
     pub fn from_str(s: &str) -> Self {
         let inner = s.chars().map(|c| c.into()).collect();
-        Self { inner }
-    }
-
-    pub fn toggle(&mut self, button: &Button) {
-        for idx in &button.lights_affected {
-            self.inner.get_mut(*idx).unwrap().toggle();
-        }
-    }
-
-    pub fn initialize_new(&self) -> Self {
-        let inner = self.inner.iter().map(|_| LightStatus::Off).collect();
         Self { inner }
     }
 }
@@ -222,14 +273,6 @@ impl From<char> for LightStatus {
             '#' => Self::On,
             '.' => Self::Off,
             _ => panic!("Not valid"),
-        }
-    }
-}
-impl LightStatus {
-    pub fn toggle(&mut self) {
-        match self {
-            LightStatus::On => *self = LightStatus::Off,
-            LightStatus::Off => *self = LightStatus::On,
         }
     }
 }
@@ -264,7 +307,9 @@ fn part_one(s: &str) -> usize {
 }
 
 fn part_two(s: &str) -> usize {
-    todo!()
+    s.lines().map(Machine::from_line).fold(0, |accum, machine| {
+        accum + machine.find_min_button_presses_pt_2()
+    })
 }
 
 #[cfg(test)]
@@ -291,6 +336,6 @@ mod tests {
         let output = part_two(input_one());
 
         // TODO fill this out
-        assert_eq!(output, 0);
+        assert_eq!(output, 33);
     }
 }
