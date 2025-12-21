@@ -208,44 +208,101 @@ impl Machine {
         best
     }
 
-    fn dfs(eqs: &[(u64, u32)], idx: usize, x: &mut Vec<u32>, best: &mut u32) {
-        if idx == x.len() {
-            if eqs.iter().all(|(row, rhs)| {
-                let sum: u32 = x
-                    .iter()
-                    .enumerate()
-                    .filter(|(j, _)| (row >> j) & 1 == 1)
-                    .map(|(_, v)| *v)
-                    .sum();
-                sum == *rhs
-            }) {
-                *best = (*best).min(x.iter().sum());
-            }
-            return;
-        }
-
-        for v in 0..=*best {
-            x[idx] = v;
-            if x.iter().take(idx + 1).sum::<u32>() >= *best {
-                break;
-            }
-            Self::dfs(eqs, idx + 1, x, best);
-        }
-    }
-
     pub fn find_min_button_presses_pt_2(&self) -> usize {
         let eqs = self.build_joltage_equations();
-
         let n_buttons = self.buttons.len();
 
+        let eq_buttons = Self::build_eq_button_map(&eqs, n_buttons);
+
         let mut x = vec![0u32; n_buttons];
+        let mut eq_sums = vec![0_u32; eqs.len()];
 
         let rhs_max = eqs.iter().map(|(_, rhs)| *rhs).max().unwrap_or(0);
         let mut best = rhs_max * n_buttons as u32;
 
-        Self::dfs(&eqs, 0, &mut x, &mut best);
+        // Self::dfs(&eqs, 0, &mut x, &mut best);
+        Self::dfs_pruned(&eqs, &eq_buttons, 0, &mut x, 0, &mut eq_sums, &mut best);
 
         best as usize
+    }
+
+    fn build_eq_button_map(eqs: &[(u64, u32)], n_buttons: usize) -> Vec<Vec<usize>> {
+        let mut map = vec![Vec::new(); n_buttons];
+        for (eq_idx, (row, _)) in eqs.iter().enumerate() {
+            for (j, map_item) in map.iter_mut().enumerate() {
+                if (row >> j) & 1 == 1 {
+                    map_item.push(eq_idx);
+                }
+            }
+        }
+        map
+    }
+
+    fn dfs_pruned(
+        eqs: &[(u64, u32)],
+        eq_btns: &[Vec<usize>],
+        idx: usize,
+        x: &mut [u32],
+        cur_sum: u32,
+        eq_sums: &mut [u32],
+        best: &mut u32,
+    ) {
+        if cur_sum >= *best {
+            return;
+        }
+
+        if idx == x.len() {
+            if eqs
+                .iter()
+                .enumerate()
+                .all(|(i, (_, rhs))| eq_sums[i] == *rhs)
+            {
+                *best = cur_sum;
+            }
+            return;
+        }
+
+        // Upper bound on this variable
+        let max_v = (*best - cur_sum).min(
+            eq_btns[idx]
+                .iter()
+                .map(|&eq| eqs[eq].1 - eq_sums[eq])
+                .min()
+                .unwrap_or(0),
+        );
+
+        for v in 0..=max_v {
+            x[idx] = v;
+
+            // Apply contribution
+            for &eq in &eq_btns[idx] {
+                eq_sums[eq] += v;
+            }
+
+            // Early feasibility check
+            let feasible = eqs.iter().enumerate().all(|(i, (_, rhs))| {
+                if eq_sums[i] > *rhs {
+                    return false;
+                }
+
+                let remaining_buttons = (idx + 1..x.len())
+                    .filter(|&j| ((eqs[i].0 >> j) & 1) == 1)
+                    .count() as u32;
+
+                let max_remaining = remaining_buttons * (*best - cur_sum);
+
+                eq_sums[i] + max_remaining >= *rhs
+            });
+
+            if feasible {
+                Self::dfs_pruned(eqs, eq_btns, idx + 1, x, cur_sum + v, eq_sums, best);
+            }
+
+            // Roll back
+            for &eq in &eq_btns[idx] {
+                eq_sums[eq] -= v;
+            }
+        }
     }
 }
 
