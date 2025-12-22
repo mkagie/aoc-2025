@@ -196,20 +196,31 @@ impl Driver {
     /// - Place a specific shape variant at a specific location
     fn can_fit(region: &Region, shapes: &[Shape]) -> bool {
         // In support of column layout:
-        // [ grid cell 0 | grid cell 1 | ... | grid cell N | shape 0 | shape 1 | ... ]
         let n_cells = region.width * region.height;
-        let n_shapes = region.shape_counts.len();
+        let relevant_shape_counts: Vec<_> = region
+            .shape_counts
+            .iter()
+            .enumerate()
+            .filter(|(_, count)| **count > 0)
+            .collect();
+        let n_shapes = relevant_shape_counts.len();
 
         // Create a new solver with total columns:
         // n_cells + n_shapes (present count columns)
         let mut solver = Solver::new(n_cells + n_shapes);
+        // [ grid cell 0 | grid cell 1 | ... | grid cell N | shape 0 | shape 1 | ... ]
+
+        // Add an option of each cell being filled so that we do not have to fill every cell with
+        // the shapes -- so add an option with no shapes but with each cell occupied individually
         for cell in 0..n_cells {
-            solver.add_option((), &[cell]);
+            let row = vec![cell];
+            solver.add_option((), &row);
         }
 
         // For each shape we need to place
-        for (shape_idx, &count) in region.shape_counts.iter().enumerate() {
+        for (shape_idx, &count) in relevant_shape_counts {
             // This shape is not required to fit
+            // Not actually required with the above, but oh well
             if count == 0 {
                 continue;
             }
@@ -223,7 +234,6 @@ impl Driver {
                 // Try all possible positions
                 for y in 0..=region.height - h {
                     for x in 0..=region.width - w {
-                        // The shape starts at (x, y)
 
                         // Create a DLX row (option)
                         let mut row = Vec::new();
@@ -250,18 +260,20 @@ impl Driver {
         }
 
         // Try to find *one* exact cover
-        println!("Solver: {:?}", solver.next());
-        solver.next().is_some()
+        let solution = solver.next();
+        println!("Solution: {:?}", solution);
+        solution.is_some()
     }
 
     pub fn part_one(&self) -> usize {
         let mut success = 0;
-        for region in &self.regions {
-            if Self::can_fit(region, &self.shapes) {
-                success += 1;
-            }
-        }
-        success
+        // for region in &self.regions {
+        //     if Self::can_fit(region, &self.shapes) {
+        //         success += 1;
+        //     }
+        // }
+        // success
+        Self::can_fit(&self.regions[0], &self.shapes) as usize
     }
 }
 
