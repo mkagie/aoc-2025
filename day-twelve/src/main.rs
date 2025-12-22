@@ -2,6 +2,7 @@
 use std::{collections::HashSet, time::Instant};
 
 use clap::Parser;
+use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -221,19 +222,20 @@ impl Driver {
         shapes: &[Shape],
         shape_idx: usize,
         failed_scenarios: &mut HashSet<Scenario>,
-    ) -> bool {
-        // println!("Trying shape {shape_idx} of {}", shapes.len());
-        // All shapes placed
+        depth: usize,
+    ) -> CanFitResult {
         if shape_idx >= shapes.len() {
-            println!("Successfully placed all shapes");
-            return true;
+            return CanFitResult::True;
+        }
+
+        // if depth >= 150 {
+        if depth >= 140 {
+            return CanFitResult::MaxDepthReached;
         }
 
         // Try every variant
         let variants = shapes[shape_idx].all_variants();
-        let n_variants = variants.len();
         for (variant_idx, variant) in variants.into_iter().enumerate() {
-            // println!("Starting variant {variant_idx} of {n_variants} for shape {shape_idx}",);
             let h = variant.height();
             let w = variant.width();
 
@@ -248,20 +250,28 @@ impl Driver {
                         y,
                     };
                     if failed_scenarios.contains(&scenario) {
-                        // println!("Finding a failed scenario");
                         continue;
                     }
                     if Self::fits(grid, &variant, x, y) {
                         // Place in the grid
                         Self::place(grid, &variant, x, y, true);
-                        // println!("Shape {shape_idx} has been placed");
 
                         // If this works, great -- reduce the shape counts of this index by one and
                         // try again
-                        if Self::can_fit_recursive(grid, shapes, shape_idx + 1, failed_scenarios) {
-                            println!("HERE");
-                            return true;
+                        let result = Self::can_fit_recursive(
+                            grid,
+                            shapes,
+                            shape_idx + 1,
+                            failed_scenarios,
+                            depth + 1,
+                        );
+                        if matches!(result, CanFitResult::True) {
+                            return CanFitResult::True;
                         }
+                        if matches!(result, CanFitResult::MaxDepthReached) {
+                            return CanFitResult::MaxDepthReached;
+                        }
+                        // Otherwise, it failed
                         failed_scenarios.insert(scenario);
 
                         // If it does not, backgrack
@@ -271,8 +281,7 @@ impl Driver {
                 }
             }
         }
-        // println!("Cannot place shape {shape_idx}");
-        false
+        CanFitResult::False
     }
 
     pub fn can_fit(region: &Region, shapes: &[Shape]) -> bool {
@@ -290,22 +299,24 @@ impl Driver {
 
         let mut failed_scenarios = HashSet::new();
 
-        Self::can_fit_recursive(&mut grid, &relevant_shapes, 0, &mut failed_scenarios)
+        matches!(
+            Self::can_fit_recursive(&mut grid, &relevant_shapes, 0, &mut failed_scenarios, 0),
+            CanFitResult::True
+        )
     }
 
     pub fn part_one(&self) -> usize {
-        let mut success = 0;
-        // for region in &self.regions {
-        //     if Self::can_fit(region, &self.shapes) {
-        //         success += 1;
-        //     }
-        // }
-        // success
-        println!(
-            "Can fit: {:?}",
-            Self::can_fit(&self.regions[2], &self.shapes)
-        );
-        0
+        let successes: usize = self
+            .regions
+            .par_iter()
+            .enumerate()
+            .map(|(region_idx, region)| {
+                let can_fit = Self::can_fit(region, &self.shapes);
+                println!("Finished region {region_idx} -- can fit: {can_fit}");
+                can_fit as usize
+            })
+            .sum();
+        successes
     }
 }
 
@@ -317,6 +328,14 @@ struct Scenario {
     variant_idx: usize,
     x: usize,
     y: usize,
+}
+
+/// Max Depth Indicator
+#[derive(Debug, Clone)]
+enum CanFitResult {
+    True,
+    False,
+    MaxDepthReached,
 }
 
 fn part_one(s: &str) -> usize {

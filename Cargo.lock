@@ -261,6 +261,7 @@ name = "day-twelve"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "rayon",
 ]
 
 [[package]]
