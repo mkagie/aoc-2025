@@ -2,7 +2,6 @@
 use std::{collections::HashSet, time::Instant};
 
 use clap::Parser;
-use dlx_rs::Solver;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -46,7 +45,7 @@ impl Shape {
     /// ---
     /// ---
     /// ---
-    fn from_lines(lines: &[&str]) -> Self {
+    pub fn from_lines(lines: &[&str]) -> Self {
         // Skip the first line
         let grid = lines
             .iter()
@@ -63,11 +62,11 @@ impl Shape {
             .collect();
         Self { grid }
     }
-    fn width(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.grid[0].len()
     }
 
-    fn height(&self) -> usize {
+    pub fn height(&self) -> usize {
         self.grid.len()
     }
 
@@ -91,7 +90,7 @@ impl Shape {
         Shape { grid: new_grid }
     }
 
-    fn all_variants(&self) -> Vec<Shape> {
+    pub fn all_variants(&self) -> Vec<Shape> {
         let mut variants = HashSet::new(); // Use to deconflict
         let mut shape = self.clone();
         for _ in 0..4 {
@@ -100,6 +99,12 @@ impl Shape {
             shape = shape.rotate90();
         }
         variants.into_iter().collect()
+    }
+
+    pub fn size(&self) -> usize {
+        self.grid.iter().fold(0_usize, |accum, v| {
+            accum + v.iter().map(|x| *x as usize).sum::<usize>()
+        })
     }
 }
 
@@ -186,83 +191,106 @@ impl Driver {
         Self { shapes, regions }
     }
 
-    /// Use DLX to determine if they can fit
-    ///
-    /// Constraints (columns):
-    /// - Constraint A: Grid cells -- each grid cell can be occupied by at most one shape
-    /// - Constraint B: each present must be placed 'count' times
-    ///
-    /// Options (row)
-    /// - Place a specific shape variant at a specific location
-    fn can_fit(region: &Region, shapes: &[Shape]) -> bool {
-        // In support of column layout:
-        let n_cells = region.width * region.height;
-        let relevant_shape_counts: Vec<_> = region
-            .shape_counts
-            .iter()
-            .enumerate()
-            .filter(|(_, count)| **count > 0)
-            .collect();
-        let n_shapes = relevant_shape_counts.len();
+    fn fits(grid: &[Vec<bool>], shape: &Shape, x: usize, y: usize) -> bool {
+        let h = shape.height();
+        let w = shape.width();
+        for dy in 0..h {
+            for dx in 0..w {
+                if shape.grid[dy][dx] && grid[y + dy][x + dx] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 
-        // Create a new solver with total columns:
-        // n_cells + n_shapes (present count columns)
-        let mut solver = Solver::new(n_cells + n_shapes);
-        // [ grid cell 0 | grid cell 1 | ... | grid cell N | shape 0 | shape 1 | ... ]
+    fn place(grid: &mut [Vec<bool>], shape: &Shape, x: usize, y: usize, value: bool) {
+        let h = shape.height();
+        let w = shape.width();
+        for dy in 0..h {
+            for dx in 0..w {
+                if shape.grid[dy][dx] {
+                    grid[y + dy][x + dx] = value;
+                }
+            }
+        }
+    }
 
-        // Add an option of each cell being filled so that we do not have to fill every cell with
-        // the shapes -- so add an option with no shapes but with each cell occupied individually
-        for cell in 0..n_cells {
-            let row = vec![cell];
-            solver.add_option((), &row);
+    fn can_fit_recursive(
+        grid: &mut [Vec<bool>],
+        shapes: &[Shape],
+        shape_idx: usize,
+        failed_scenarios: &mut HashSet<Scenario>,
+    ) -> bool {
+        // println!("Trying shape {shape_idx} of {}", shapes.len());
+        // All shapes placed
+        if shape_idx >= shapes.len() {
+            println!("Successfully placed all shapes");
+            return true;
         }
 
-        // For each shape we need to place
-        for (shape_idx, &count) in relevant_shape_counts {
-            // This shape is not required to fit
-            // Not actually required with the above, but oh well
-            if count == 0 {
-                continue;
-            }
+        // Try every variant
+        let variants = shapes[shape_idx].all_variants();
+        let n_variants = variants.len();
+        for (variant_idx, variant) in variants.into_iter().enumerate() {
+            // println!("Starting variant {variant_idx} of {n_variants} for shape {shape_idx}",);
+            let h = variant.height();
+            let w = variant.width();
 
-            // Precompute unique rotations/flips
-            let variants = shapes[shape_idx].all_variants();
-            for variant in variants {
-                let h = variant.height();
-                let w = variant.width();
+            // Try all starting positions
+            for y in 0..=grid.len() - h {
+                for x in 0..=grid[0].len() - w {
+                    let scenario = Scenario {
+                        grid: grid.to_owned(),
+                        shape_idx,
+                        variant_idx,
+                        x,
+                        y,
+                    };
+                    if failed_scenarios.contains(&scenario) {
+                        // println!("Finding a failed scenario");
+                        continue;
+                    }
+                    if Self::fits(grid, &variant, x, y) {
+                        // Place in the grid
+                        Self::place(grid, &variant, x, y, true);
+                        // println!("Shape {shape_idx} has been placed");
 
-                // Try all possible positions
-                for y in 0..=region.height - h {
-                    for x in 0..=region.width - w {
-
-                        // Create a DLX row (option)
-                        let mut row = Vec::new();
-
-                        // Cover every grid cell
-                        for dy in 0..h {
-                            for dx in 0..w {
-                                if variant.grid[dy][dx] {
-                                    let idx = (y + dy) * region.width + (x + dx);
-                                    row.push(idx);
-                                }
-                            }
+                        // If this works, great -- reduce the shape counts of this index by one and
+                        // try again
+                        if Self::can_fit_recursive(grid, shapes, shape_idx + 1, failed_scenarios) {
+                            println!("HERE");
+                            return true;
                         }
+                        failed_scenarios.insert(scenario);
 
-                        // And cover the present-use constraint
-                        row.push(n_cells + shape_idx); // This is indicative of the current shape
-                        // being placed
-
-                        // Add this placement as an option
-                        solver.add_option((), &row);
+                        // If it does not, backgrack
+                        // undo the increment
+                        Self::place(grid, &variant, x, y, false);
                     }
                 }
             }
         }
+        // println!("Cannot place shape {shape_idx}");
+        false
+    }
 
-        // Try to find *one* exact cover
-        let solution = solver.next();
-        println!("Solution: {:?}", solution);
-        solution.is_some()
+    pub fn can_fit(region: &Region, shapes: &[Shape]) -> bool {
+        let mut grid = vec![vec![false; region.width]; region.height];
+        // Create a list of shapes independent of the counts
+        let mut relevant_shapes = Vec::new();
+        for (shape_idx, count) in region.shape_counts.iter().enumerate() {
+            for _ in 0..*count {
+                relevant_shapes.push(shapes[shape_idx].clone());
+            }
+        }
+        // I would like to place largest shapes first because they will be the most restrictive
+        relevant_shapes.sort_by_key(|shape| shape.size());
+        relevant_shapes.reverse();
+
+        let mut failed_scenarios = HashSet::new();
+
+        Self::can_fit_recursive(&mut grid, &relevant_shapes, 0, &mut failed_scenarios)
     }
 
     pub fn part_one(&self) -> usize {
@@ -273,8 +301,22 @@ impl Driver {
         //     }
         // }
         // success
-        Self::can_fit(&self.regions[0], &self.shapes) as usize
+        println!(
+            "Can fit: {:?}",
+            Self::can_fit(&self.regions[2], &self.shapes)
+        );
+        0
     }
+}
+
+/// Failed location -- need to prune
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct Scenario {
+    grid: Vec<Vec<bool>>,
+    shape_idx: usize,
+    variant_idx: usize,
+    x: usize,
+    y: usize,
 }
 
 fn part_one(s: &str) -> usize {
