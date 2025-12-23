@@ -82,16 +82,16 @@ fn part_one_internal(input: InputType) -> ReturnType {
             "*" => {
                 // Multiply all values
                 let mut mult = 1;
-                for idx_r in 0..n_rows - 1 {
-                    mult *= input[idx_r][idx_c].parse::<usize>().unwrap();
+                for input_r in input.iter().take(n_rows - 1) {
+                    mult *= input_r[idx_c].parse::<usize>().unwrap();
                 }
                 mult
             }
             "+" => {
                 // Add all values
                 let mut sum = 0;
-                for idx_r in 0..n_rows - 1 {
-                    sum += input[idx_r][idx_c].parse::<usize>().unwrap();
+                for input_r in input.iter().take(n_rows - 1) {
+                    sum += input_r[idx_c].parse::<usize>().unwrap();
                 }
                 sum
             }
@@ -129,11 +129,11 @@ fn part_two_internal(input: Vec<Vec<char>>) -> ReturnType {
         } else {
             // Go down the row and do something with the value
             let mut d = 0;
-            'a: for idx_r in 0..n_rows - 1 {
-                if input[idx_r][idx_c].is_whitespace() {
+            'a: for input_r in input.iter().take(n_rows - 1) {
+                if input_r[idx_c].is_whitespace() {
                     continue 'a;
                 }
-                d = d * 10 + input[idx_r][idx_c].to_digit(10).unwrap() as usize;
+                d = d * 10 + input_r[idx_c].to_digit(10).unwrap() as usize;
             }
             match sign {
                 Some('+') => tmp_value += d,
@@ -147,9 +147,8 @@ fn part_two_internal(input: Vec<Vec<char>>) -> ReturnType {
 }
 
 fn is_all_space(input: &[Vec<char>], idx_c: usize) -> bool {
-    let n_rows = input.len();
-    for idx_r in 0..n_rows {
-        if !input[idx_r][idx_c].is_whitespace() {
+    for input_r in input.iter() {
+        if !input_r[idx_c].is_whitespace() {
             return false;
         }
     }
