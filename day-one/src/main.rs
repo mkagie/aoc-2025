@@ -1,9 +1,5 @@
 //! Command line executable for running part one and part two
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    time::Instant,
-};
+use std::{fs::File, io::Read, time::Instant};
 
 use clap::Parser;
 
@@ -27,39 +23,19 @@ enum Part {
 fn main() {
     let args = Args::parse();
 
-    let file = BufReader::new(File::open(args.input_file).expect("Cannot find file"));
+    let mut s = String::new();
+    let mut file = File::open(args.input_file).expect("Cannot find file");
+    let _ = file.read_to_string(&mut s).unwrap();
 
     let start = Instant::now();
     let answer = match args.part {
-        Part::Part1 => part_one(file),
-        Part::Part2 => part_two(file),
+        Part::Part1 => part_one(&s),
+        Part::Part2 => part_two(&s),
     };
 
     println!("{:?}", answer);
     println!("Completed in {:?}", start.elapsed());
 }
-
-fn part_one(file: BufReader<File>) -> ReturnType {
-    let input = parse_input(file, map_one);
-    part_one_internal(input)
-}
-
-fn part_two(file: BufReader<File>) -> ReturnType {
-    let input = parse_input(file, map_two);
-    part_two_internal(input)
-}
-
-fn parse_input<F, T>(file: BufReader<File>, f: F) -> Vec<T>
-where
-    F: Fn(&str) -> T,
-{
-    file.lines().map(|x| f(x.unwrap().as_str())).collect()
-}
-
-// TODO -- Update this with the return type
-type ReturnType = usize;
-type VectorType = Rotation;
-type VectorType2 = VectorType;
 
 /// Rotation
 #[derive(Debug)]
@@ -97,41 +73,22 @@ impl Default for Counter {
 }
 impl Counter {
     pub fn rotate(&mut self, rot: &Rotation) {
-        match rot {
-            Rotation::Right(val) => {
-                let int_val = self.val as u16 + *val;
-                // We know int_val > 0, so just take modulus
-                self.val = (int_val % 100_u16) as u8;
-                // Since this is addition, we can determine how many times we passed zero by just
-                // taking the floor of the division
-                self.counter_pt_2 += (int_val / 100_u16) as usize;
+        let (int_val, v) = match rot {
+            Rotation::Left(v) => (self.val as i16 - *v as i16, *v as i16),
+            Rotation::Right(v) => (self.val as i16 + *v as i16, *v as i16),
+        };
+        let diff = if self.val == 0 {
+            100
+        } else {
+            match rot {
+                Rotation::Left(_) => self.val as i16,
+                Rotation::Right(_) => 100 - self.val as i16,
             }
-            Rotation::Left(val) => {
-                let prev_val = self.val;
-                let int_val = self.val as i16 - *val as i16;
-                let modulo_val = int_val % 100_i16;
-                // Modulo_val could be negative, need to correctly deal with this
-                if modulo_val.is_negative() {
-                    self.val = (modulo_val + 100) as u8;
-
-                    // If it is negative, then we definitely crossed zero. Now we need to determine
-                    // how many times we crossed zero
-                    self.counter_pt_2 += (int_val as f32 / 100_f32).abs().ceil() as usize;
-                } else {
-                    // Number is zero or positive
-                    // If modulo_val is not negative, then we could not have crossed zero
-                    self.val = modulo_val as u8;
-
-                    if modulo_val == 0 {
-                        self.counter_pt_2 += 1;
-                    }
-                }
-                // We did not cross zero if we started at zero
-                if prev_val == 0 {
-                    self.counter_pt_2 -= 1;
-                }
-            }
+        };
+        if v >= diff {
+            self.counter_pt_2 += ((v - diff) / 100) as usize + 1;
         }
+        self.val = int_val.rem_euclid(100_i16) as u8;
         if self.val == 0 {
             self.counter_pt_1 += 1;
         }
@@ -146,29 +103,19 @@ impl Counter {
     }
 }
 
-/// Map a line to a VectorType
-fn map_one(input: &str) -> VectorType {
-    Rotation::from_line(input)
-}
-
-/// Map a line to a VectorType
-fn map_two(input: &str) -> VectorType2 {
-    map_one(input)
-}
-
-/// Internal logic for part_one
-fn part_one_internal(input: Vec<VectorType>) -> ReturnType {
+fn part_one(input: &str) -> usize {
+    let rotations: Vec<_> = input.lines().map(Rotation::from_line).collect();
     let mut counter = Counter::default();
-    for rot in input {
+    for rot in rotations {
         counter.rotate(&rot);
     }
     counter.get_counter_pt_1()
 }
 
-/// Internal logic for part two
-fn part_two_internal(input: Vec<VectorType2>) -> ReturnType {
+fn part_two(input: &str) -> usize {
+    let rotations: Vec<_> = input.lines().map(Rotation::from_line).collect();
     let mut counter = Counter::default();
-    for rot in input {
+    for rot in rotations {
         counter.rotate(&rot);
     }
     counter.get_counter_pt_2()
@@ -192,18 +139,9 @@ R14
 L82"
     }
 
-    /// Function to split above into different inputs
-    fn parse_input_test<F, T>(input: &str, f: F) -> Vec<T>
-    where
-        F: Fn(&str) -> T,
-    {
-        input.lines().map(f).collect()
-    }
-
     #[test]
     fn test_one() {
-        let input = parse_input_test(input_one(), map_one);
-        let output = part_one_internal(input);
+        let output = part_one(input_one());
 
         // TODO fill this out
         assert_eq!(output, 3);
@@ -211,10 +149,15 @@ L82"
 
     #[test]
     fn test_two() {
-        let input = parse_input_test(input_one(), map_two);
-        let output = part_two_internal(input);
+        let output = part_two(input_one());
 
         // TODO fill this out
         assert_eq!(output, 6);
+    }
+
+    #[test]
+    fn test_euclid() {
+        assert_eq!((-20_i16).rem_euclid(100), 80);
+        assert_eq!((-120_i16).div_euclid(100), -2);
     }
 }
