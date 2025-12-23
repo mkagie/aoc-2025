@@ -1,12 +1,7 @@
 //! Command line executable for running part one and part two
-use std::{
-    collections::HashSet,
-    sync::{Arc, atomic::AtomicUsize},
-    time::Instant,
-};
+use std::time::Instant;
 
 use clap::Parser;
-use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -22,7 +17,6 @@ struct Args {
 #[derive(clap::Subcommand, Debug)]
 enum Part {
     Part1,
-    Part2,
 }
 
 fn main() {
@@ -34,7 +28,6 @@ fn main() {
     let start = Instant::now();
     let answer = match args.part {
         Part::Part1 => part_one(&s),
-        Part::Part2 => part_two(&s),
     };
 
     println!("{:?}", answer);
@@ -67,45 +60,6 @@ impl Shape {
             .collect();
         Self { grid }
     }
-    pub fn width(&self) -> usize {
-        self.grid[0].len()
-    }
-
-    pub fn height(&self) -> usize {
-        self.grid.len()
-    }
-
-    fn rotate90(&self) -> Shape {
-        let h = self.height();
-        let w = self.width();
-        let mut new_grid = vec![vec![false; h]; w];
-        for i in 0..h {
-            for j in 0..w {
-                new_grid[j][h - 1 - i] = self.grid[i][j];
-            }
-        }
-        Shape { grid: new_grid }
-    }
-
-    fn flip_h(&self) -> Shape {
-        let mut new_grid = self.grid.clone();
-        for row in &mut new_grid {
-            row.reverse();
-        }
-        Shape { grid: new_grid }
-    }
-
-    pub fn all_variants(&self) -> Vec<Shape> {
-        let mut variants = HashSet::new(); // Use to deconflict
-        let mut shape = self.clone();
-        for _ in 0..4 {
-            variants.insert(shape.clone());
-            variants.insert(shape.flip_h());
-            shape = shape.rotate90();
-        }
-        variants.into_iter().collect()
-    }
-
     pub fn size(&self) -> usize {
         self.grid.iter().fold(0_usize, |accum, v| {
             accum + v.iter().map(|x| *x as usize).sum::<usize>()
@@ -226,10 +180,6 @@ fn part_one(s: &str) -> usize {
     driver.part_one()
 }
 
-fn part_two(s: &str) -> usize {
-    todo!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,13 +227,5 @@ mod tests {
 
         // TODO fill this out
         assert_eq!(output, 2);
-    }
-
-    #[test]
-    fn test_two() {
-        let output = part_two(input_one());
-
-        // TODO fill this out
-        assert_eq!(output, 0);
     }
 }
