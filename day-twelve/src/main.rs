@@ -1,5 +1,9 @@
 //! Command line executable for running part one and part two
-use std::{collections::HashSet, time::Instant};
+use std::{
+    collections::HashSet,
+    sync::{Arc, atomic::AtomicUsize},
+    time::Instant,
+};
 
 use clap::Parser;
 use rayon::prelude::*;
@@ -228,8 +232,7 @@ impl Driver {
             return CanFitResult::True;
         }
 
-        // if depth >= 150 {
-        if depth >= 140 {
+        if depth >= 200 {
             return CanFitResult::MaxDepthReached;
         }
 
@@ -306,13 +309,23 @@ impl Driver {
     }
 
     pub fn part_one(&self) -> usize {
+        let success_counter = Arc::new(AtomicUsize::new(0));
+        let regions_left = Arc::new(AtomicUsize::new(self.regions.len()));
         let successes: usize = self
             .regions
             .par_iter()
             .enumerate()
-            .map(|(region_idx, region)| {
+            .map(move |(region_idx, region)| {
                 let can_fit = Self::can_fit(region, &self.shapes);
-                println!("Finished region {region_idx} -- can fit: {can_fit}");
+                if can_fit {
+                    success_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                regions_left.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                println!(
+                    "Finished region {region_idx} -- can fit: {can_fit} -- Total: {}\t{} left",
+                    success_counter.load(std::sync::atomic::Ordering::Relaxed),
+                    regions_left.load(std::sync::atomic::Ordering::Relaxed)
+                );
                 can_fit as usize
             })
             .sum();
